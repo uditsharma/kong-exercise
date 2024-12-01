@@ -1,0 +1,78 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.konnect.cdc'
+version = '1.0-SNAPSHOT'
+
+
+group = "org.example"
+version = "1.0-SNAPSHOT"
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Kafka Streams
+    implementation 'org.apache.kafka:kafka-streams:3.6.1'
+    implementation 'org.apache.kafka:kafka-clients:3.6.1'
+
+    // OpenSearch Client
+    implementation 'org.opensearch.client:opensearch-rest-high-level-client:2.3.0'
+
+    // Logging
+    implementation 'org.slf4j:slf4j-api:1.7.36'
+    implementation 'ch.qos.logback:logback-classic:1.2.11'
+
+    // JSON processing
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+
+
+    testImplementation(platform("org.junit:junit-bom:5.10.0"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+
+// Define multiple entry points
+ext {
+    mainApplications = [
+            'producer': 'com.konnect.cdc.producer.CDCEventProducer',
+            'consumer': 'com.konnect.cdc.consumer.CDCEventConsumer'
+    ]
+}
+
+// Dynamic task creation for each application
+mainApplications.each { name, mainClassValue ->
+    tasks.register("run${name.capitalize()}", JavaExec) {
+        group = 'application'
+        description = "Runs the ${name} application"
+
+        // Set the main class directly
+        mainClass = mainClassValue
+        classpath = sourceSets.main.runtimeClasspath
+
+        doFirst {
+            switch(name) {
+                case 'producer':
+                    args = ['FILE', 'stream.jsonl', 'cdc-events']
+                    break
+                case 'consumer':
+                    args = ['cdc-events', 'processed-events-topic']
+                    break
+            }
+        }
+    }
+}
+
+// Fallback main class selection
+application {
+    mainClass = project.hasProperty('mainClass') ?
+            project.getProperty('mainClass') :
+            mainApplications['consumer']
+}
