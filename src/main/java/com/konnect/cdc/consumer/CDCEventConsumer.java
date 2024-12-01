@@ -24,6 +24,11 @@ import java.util.UUID;
 public class CDCEventConsumer {
     private static final Logger logger = LoggerFactory.getLogger(CDCEventConsumer.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final RestHighLevelClient client;
+
+    public CDCEventConsumer() {
+        this.client = new RestHighLevelClient(RestClient.builder(new HttpHost("localhost", 9200, "http")));
+    }
 
     public void processEvents(String inputTopic, String openSearchIndex) {
         Properties props = new Properties();
@@ -46,15 +51,13 @@ public class CDCEventConsumer {
                         JsonNode eventNode = objectMapper.readTree(value);
                         JsonNode after = eventNode.get("after");
                         // Create OpenSearch client
-                        try (RestHighLevelClient client = createOpenSearchClient()) {
-                            // Index document
-                            IndexRequest indexRequest = new IndexRequest(openSearchIndex)
-                                    .id(UUID.randomUUID().toString())
-                                    .source(objectMapper.writeValueAsString(after), XContentType.JSON);
+                        // Index document
+                        IndexRequest indexRequest = new IndexRequest(openSearchIndex)
+                                .id(UUID.randomUUID().toString())
+                                .source(objectMapper.writeValueAsString(after), XContentType.JSON);
 
-                            client.index(indexRequest, RequestOptions.DEFAULT);
-                            logger.info("Indexed document: {}", eventNode);
-                        }
+                        client.index(indexRequest, RequestOptions.DEFAULT);
+                        logger.info("Indexed document: {}", eventNode);
                     } catch (IOException e) {
                         logger.error("Error processing event", e);
                     }
@@ -67,10 +70,6 @@ public class CDCEventConsumer {
 
         // Start the Kafka Streams application
         streams.start();
-    }
-
-    private RestHighLevelClient createOpenSearchClient() {
-        return new RestHighLevelClient(RestClient.builder(new HttpHost("localhost", 9200, "http")));
     }
 
     public static void main(String[] args) {
