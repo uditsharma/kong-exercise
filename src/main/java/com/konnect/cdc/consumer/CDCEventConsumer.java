@@ -50,10 +50,11 @@ public class CDCEventConsumer {
                         // Parse CDC event
                         JsonNode eventNode = objectMapper.readTree(value);
                         JsonNode after = eventNode.get("after");
+                        String docId = after.get("key").asText();
                         // Create OpenSearch client
                         // Index document
                         IndexRequest indexRequest = new IndexRequest(openSearchIndex)
-                                .id(UUID.randomUUID().toString())
+                                .id(docId)
                                 .source(objectMapper.writeValueAsString(after), XContentType.JSON);
 
                         client.index(indexRequest, RequestOptions.DEFAULT);
