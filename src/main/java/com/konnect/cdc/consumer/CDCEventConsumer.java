@@ -3,6 +3,8 @@ package com.konnect.cdc.consumer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.konnect.cdc.sink.OpenSearchSink;
+import com.konnect.cdc.sink.Sink;
 import org.apache.http.HttpHost;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
@@ -27,23 +29,21 @@ import java.util.UUID;
 public class CDCEventConsumer {
     private static final Logger logger = LoggerFactory.getLogger(CDCEventConsumer.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final RestHighLevelClient client;
     private final String appId;
     private final String inputTopic;
     private final String deadLetterTopic;
-    private final String openSearchIndex;
+    private final Sink sink;
 
     //TODO
     //  -- enable retries while indexing
     // -- handle stream processing errors better
     // -- add tests using test containers
 
-    public CDCEventConsumer(String appId, String inputTopic, String deadLetterTopic, String openSearchIndex) {
+    public CDCEventConsumer(String appId, String inputTopic, String deadLetterTopic, Sink sink) {
         this.appId = appId;
         this.inputTopic = inputTopic;
         this.deadLetterTopic = deadLetterTopic;
-        this.openSearchIndex = openSearchIndex;
-        this.client = new RestHighLevelClient(RestClient.builder(new HttpHost("localhost", 9200, "http")));
+        this.sink = sink;
     }
 
     public void consumeEvents() {
@@ -52,7 +52,7 @@ public class CDCEventConsumer {
         props.put(StreamsConfig.CLIENT_ID_CONFIG, appId + "-" + UUID.randomUUID()); // append to app resources
         // #partition == # of tasks
         // each thread will get number of tasks to process from
-        props.put(StreamsConfig.NUM_STREAM_THREADS_CONFIG, 1);
+        props.put(StreamsConfig.NUM_STREAM_THREADS_CONFIG, Runtime.getRuntime().availableProcessors());
         props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
 
         // log and continue in case bad message come. we could even branch out to a dead letter queue
@@ -72,17 +72,7 @@ public class CDCEventConsumer {
                 .branch((key, value) -> {
                     try {
                         JsonNode eventNode = objectMapper.readTree(value);
-                        JsonNode after = eventNode.get("after");
-                        String docId = after.get("key").asText();
-
-                        // Index document
-                        IndexRequest indexRequest = new IndexRequest(openSearchIndex)
-                                .id(docId)
-                                .source(objectMapper.writeValueAsString(after), XContentType.JSON);
-
-                        client.index(indexRequest, RequestOptions.DEFAULT);
-                        logger.info("Indexed document: {}", eventNode);
-                        return true;  // Success branch
+                        return sink.sink(eventNode);
                     } catch (Exception ex) {
                         logger.error("Error processing event {}", value, ex);
                         return false;
@@ -92,6 +82,7 @@ public class CDCEventConsumer {
 
         // Get the success and failure streams
         KStream<String, String> successStream = branches.get("opensearch-success");
+
         KStream<String, String> failureStream = branches.get("opensearch-failure");
 
 // For debugging
@@ -172,8 +163,9 @@ public class CDCEventConsumer {
             System.exit(1);
         }
 
+        Sink sink = new OpenSearchSink("konnect-entities");
         String topic = args[0];
-        CDCEventConsumer consumer = new CDCEventConsumer("OpenSearchIndexer", topic, "dead-letter-queue", "konnect-entities");
+        CDCEventConsumer consumer = new CDCEventConsumer("OpenSearchIndexer", topic, "dead-letter-queue", sink);
         consumer.consumeEvents();
     }
 }
