@@ -86,3 +86,10 @@ to tear down all the services.
 
 * `stream.jsonl` contains cdc events that need to be ingested
 * `docker-compose.yaml` contains the skeleton services to help you get started
+
+
+## Producer -> it will read the stream.jsonl file and produce the messages to Kafka topic
+./gradlew runProducer
+
+## Consumer -> it will consume the messages from Kafka topic and index them in Opensearch
+./gradlew runConsumer
