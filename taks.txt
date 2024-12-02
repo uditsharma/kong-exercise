@@ -1,0 +1,7 @@
+- create event source which can read from a file
+- create producer app which can read from this event source and publish to a topic
+- create consumer app which can read from this topic and publish the records to open search
+- lets use kafka stream provider abstraction  to create a pipeline where we can apply transformation on the records before publishing to open search
+- make it runnable via gradle as separate tasks
+- gradle tasks to query the open search and print the records
+- if needed we can use  docker to run these producer and consumer apps
