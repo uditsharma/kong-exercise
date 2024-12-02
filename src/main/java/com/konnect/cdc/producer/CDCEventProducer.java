@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Iterator;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class CDCEventProducer {
@@ -56,8 +57,8 @@ public class CDCEventProducer {
             int eventCount = 0;
 
             while (eventIterator.hasNext()) {
+                String event = eventIterator.next();
                 try {
-                    String event = eventIterator.next();
                     ObjectMapper mapper = new ObjectMapper();
                     JsonNode eventJson = mapper.readTree(event);
                     JsonNode after = eventJson.get("after");
@@ -84,6 +85,13 @@ public class CDCEventProducer {
                     });
                     eventCount++;
                 } catch (Exception e) {
+                    ProducerRecord<String, String> record = new ProducerRecord<>(
+                            topicName,
+                            UUID.randomUUID().toString(), // Let Kafka generate key
+                            event // JSON event as value
+                    );
+                    producer.send(record);
+                    failureCount.incrementAndGet();
                     logger.error("Error processing event", e);
                 }
             }
