@@ -28,6 +28,7 @@ public class CDCEventConsumer {
     private final String inputTopic;
     private final String deadLetterTopic;
     private final Sink sink;
+    private KafkaStreams streams;
 
     //TODO
     //  -- enable retries while indexing
@@ -39,9 +40,10 @@ public class CDCEventConsumer {
         this.inputTopic = inputTopic;
         this.deadLetterTopic = deadLetterTopic;
         this.sink = sink;
+        setUpStream();
     }
 
-    public void consumeEvents() {
+    public void setUpStream() {
         Properties props = new Properties();
         props.put(StreamsConfig.APPLICATION_ID_CONFIG, appId);
         props.put(StreamsConfig.CLIENT_ID_CONFIG, appId + "-" + UUID.randomUUID()); // append to app resources
@@ -92,6 +94,10 @@ public class CDCEventConsumer {
 
         // setup stream handlers, such as exception handlers, state listeners, shutdown hooks
         setupStreamHandlers(streams);
+        this.streams = streams;
+    }
+
+    public void start() {
         // Start the Kafka Streams application
         startStreams(streams);
     }
@@ -160,6 +166,6 @@ public class CDCEventConsumer {
         Sink sink = new OpenSearchSink("konnect-entities");
         String topic = args[0];
         CDCEventConsumer consumer = new CDCEventConsumer("OpenSearchIndexer", topic, "dead-letter-queue", sink);
-        consumer.consumeEvents();
+        consumer.start();
     }
 }
