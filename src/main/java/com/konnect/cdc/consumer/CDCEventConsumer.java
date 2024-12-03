@@ -3,9 +3,9 @@ package com.konnect.cdc.consumer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.konnect.cdc.CDCEvent;
 import com.konnect.cdc.sink.OpenSearchSink;
 import com.konnect.cdc.sink.Sink;
-import org.apache.http.HttpHost;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
@@ -13,11 +13,6 @@ import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.LogAndContinueExceptionHandler;
 import org.apache.kafka.streams.errors.StreamsUncaughtExceptionHandler;
 import org.apache.kafka.streams.kstream.*;
-import org.opensearch.action.index.IndexRequest;
-import org.opensearch.client.RequestOptions;
-import org.opensearch.client.RestClient;
-import org.opensearch.client.RestHighLevelClient;
-import org.opensearch.common.xcontent.XContentType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,7 +67,7 @@ public class CDCEventConsumer {
                 .branch((key, value) -> {
                     try {
                         JsonNode eventNode = objectMapper.readTree(value);
-                        return sink.sink(eventNode);
+                        return sink.sink(new CDCEvent(eventNode));
                     } catch (Exception ex) {
                         logger.error("Error processing event {}", value, ex);
                         return false;
@@ -85,7 +80,6 @@ public class CDCEventConsumer {
 
         KStream<String, String> failureStream = branches.get("opensearch-failure");
 
-// For debugging
         branches.forEach((key, value) -> {
             logger.info("Branch key: {}", key);
         });

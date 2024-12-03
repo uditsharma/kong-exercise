@@ -2,7 +2,9 @@ package com.konnect.cdc.sink;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.konnect.cdc.CDCEvent;
 import org.apache.http.HttpHost;
+import org.opensearch.action.delete.DeleteRequest;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.client.RequestOptions;
 import org.opensearch.client.RestClient;
@@ -25,19 +27,31 @@ public class OpenSearchSink implements Sink {
     }
 
     @Override
-    public boolean sink(JsonNode document) {
+    public boolean sink(CDCEvent document) {
         try {
-            JsonNode after = document.get("after");
-            String docId = after.get("key").asText();
-
-            // Index document
-            IndexRequest indexRequest = new IndexRequest(openSearchIndex)
-                    .id(docId)
-                    .source(objectMapper.writeValueAsString(after), XContentType.JSON);
-
-            client.index(indexRequest, RequestOptions.DEFAULT);
-            logger.info("Indexed document: {}", document);
-            return true;  // Success branch
+            // Extract document ID
+            if (document.getDocId().isPresent()) {
+                if (document.isDelete()) {
+                    // Delete document
+                    String docId = document.getDocId().get();
+                    client.delete(new DeleteRequest(openSearchIndex, docId), RequestOptions.DEFAULT);
+                    logger.info("Deleted document: {}", document);
+                } else if (document.isCreate() || document.isUpdate()) {
+                    // Index document if document to index is present
+                    if (document.getDocumentToIndex().isPresent()) {
+                        IndexRequest indexRequest = new IndexRequest(openSearchIndex)
+                                .id(document.getDocId().get())
+                                .source(objectMapper.writeValueAsString(document.getDocumentToIndex().get()), XContentType.JSON);
+                        client.index(indexRequest, RequestOptions.DEFAULT);
+                        logger.info("Indexed document: {}", document);
+                    } else {
+                        logger.warn("Document to index is missing: {}", document);
+                    }
+                } else {
+                    logger.warn("Unsupported operation: {}", document);
+                }
+            }
+            return true;
         } catch (Exception ex) {
             logger.error("Error processing event {}", document, ex);
             return false;

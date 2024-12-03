@@ -3,6 +3,7 @@ package com.konnect.cdc.producer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.konnect.cdc.CDCEvent;
 import com.konnect.cdc.source.EventSource;
 import com.konnect.cdc.source.EventSourceMetadata;
 import com.konnect.cdc.source.FileBasedEventSource;
@@ -13,7 +14,9 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.text.html.Option;
 import java.util.Iterator;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -61,30 +64,33 @@ public class CDCEventProducer {
                 try {
                     ObjectMapper mapper = new ObjectMapper();
                     JsonNode eventJson = mapper.readTree(event);
-                    JsonNode after = eventJson.get("after");
-                    // using this key to distribute, ideally i want to use the document key
-                    String key = after.get("key").asText();
-                    // Create a ProducerRecord for each event
-                    ProducerRecord<String, String> record = new ProducerRecord<>(
-                            topicName,
-                            key, // Let Kafka generate key
-                            event // JSON event as value
-                    );
+                    CDCEvent cdcEvent = new CDCEvent(eventJson);
+                    Optional<String> docId = cdcEvent.getDocId();
+                    if (docId.isPresent()) {
+                        // Create a ProducerRecord for each event
+                        ProducerRecord<String, String> record = new ProducerRecord<>(
+                                topicName,
+                                docId.get(),
+                                event
+                        );
 
-                    // Send the record to Kafka
-                    producer.send(record, (recordMetadata, exception) -> {
-                        if (exception != null) {
-                            failureCount.incrementAndGet();
-                            logger.error("Error sending event", exception);
-                        } else {
-                            successCount.incrementAndGet(); // this could be failure metrics
-                            logger.debug("Sent event to partition {} with offset {}",
-                                    recordMetadata.partition(),
-                                    recordMetadata.offset());
-                        }
-                    });
+                        // Send the record to Kafka
+                        // 1MB default limit for message size in Kafka
+                        producer.send(record, (recordMetadata, exception) -> {
+                            if (exception != null) {
+                                failureCount.incrementAndGet();
+                                logger.error("Error sending event", exception);
+                            } else {
+                                successCount.incrementAndGet(); // this could be failure metrics
+                                logger.debug("Sent event to partition {} with offset {}",
+                                        recordMetadata.partition(),
+                                        recordMetadata.offset());
+                            }
+                        });
+                    }
                     eventCount++;
                 } catch (Exception e) {
+                    // push bad record to same topic just to show  dead letter queue
                     ProducerRecord<String, String> record = new ProducerRecord<>(
                             topicName,
                             UUID.randomUUID().toString(), // Let Kafka generate key
